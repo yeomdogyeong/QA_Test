@@ -1,0 +1,5 @@
+{
+  "name": "보안 관리 시스템 (QA 테스트용)",
+  "description": "사용자 관리, 역할 기반 액세스 제어(RBAC) 및 액세스 로그를 포함한 QA 자동화 테스트 포트폴리오용 보안 관리 시스템입니다.",
+  "requestFramePermissions": []
+}
