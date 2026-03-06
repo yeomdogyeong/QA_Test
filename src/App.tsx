@@ -156,6 +156,41 @@ export default function App() {
     }
   }, [activeTab, isLoggedIn, user?.role]);
 
+  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [newUser, setNewUser] = useState({
+    username: '',
+    password: '',
+    name: '',
+    email: '',
+    phone: '',
+    role: 'User' as Role
+  });
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': token || ''
+        },
+        body: JSON.stringify(newUser)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert('사용자가 생성되었습니다.');
+        setIsUserModalOpen(false);
+        setNewUser({ username: '', password: '', name: '', email: '', phone: '', role: 'User' });
+        fetchUsers();
+      } else {
+        alert(data.error || '생성 실패');
+      }
+    } catch (e) {
+      alert('서버 연결 실패');
+    }
+  };
+
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-4" onClick={updateActivity}>
@@ -329,32 +364,7 @@ export default function App() {
                   <button 
                     id="create-user-button"
                     className="bg-zinc-900 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-zinc-800 transition-all"
-                    onClick={() => {
-                      const username = prompt('아이디:');
-                      const password = prompt('비밀번호:');
-                      const name = prompt('이름:');
-                      const email = prompt('이메일:');
-                      const phone = prompt('전화번호:');
-                      const role = prompt('역할 (Admin/User/Auditor):') as Role;
-                      
-                      if (username && password && name && role) {
-                        fetch('/api/users', {
-                          method: 'POST',
-                          headers: { 
-                            'Content-Type': 'application/json',
-                            'Authorization': token || ''
-                          },
-                          body: JSON.stringify({ username, password, name, email, phone, role })
-                        }).then(res => {
-                          if (res.ok) {
-                            alert('사용자가 생성되었습니다.');
-                            fetchUsers();
-                          } else {
-                            res.json().then(data => alert(data.error || '생성 실패'));
-                          }
-                        });
-                      }
-                    }}
+                    onClick={() => setIsUserModalOpen(true)}
                   >
                     <Plus className="w-4 h-4" /> 사용자 추가
                   </button>
@@ -442,6 +452,106 @@ export default function App() {
           </AnimatePresence>
         </div>
       </main>
+
+      {/* User Creation Modal */}
+      <AnimatePresence>
+        {isUserModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-zinc-200"
+            >
+              <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
+                <h3 className="text-xl font-bold">새 사용자 추가</h3>
+                <button onClick={() => setIsUserModalOpen(false)} className="p-2 hover:bg-zinc-100 rounded-lg">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <form onSubmit={handleCreateUser} className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">아이디</label>
+                    <input
+                      id="new-username"
+                      type="text"
+                      required
+                      className="w-full px-3 py-2 rounded-lg border border-zinc-300 focus:ring-2 focus:ring-zinc-900 outline-none"
+                      value={newUser.username}
+                      onChange={e => setNewUser({...newUser, username: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">비밀번호</label>
+                    <input
+                      id="new-password"
+                      type="password"
+                      required
+                      className="w-full px-3 py-2 rounded-lg border border-zinc-300 focus:ring-2 focus:ring-zinc-900 outline-none"
+                      value={newUser.password}
+                      onChange={e => setNewUser({...newUser, password: e.target.value})}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">이름</label>
+                  <input
+                    id="new-name"
+                    type="text"
+                    required
+                    className="w-full px-3 py-2 rounded-lg border border-zinc-300 focus:ring-2 focus:ring-zinc-900 outline-none"
+                    value={newUser.name}
+                    onChange={e => setNewUser({...newUser, name: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">이메일</label>
+                  <input
+                    id="new-email"
+                    type="email"
+                    className="w-full px-3 py-2 rounded-lg border border-zinc-300 focus:ring-2 focus:ring-zinc-900 outline-none"
+                    value={newUser.email}
+                    onChange={e => setNewUser({...newUser, email: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">전화번호</label>
+                  <input
+                    id="new-phone"
+                    type="text"
+                    className="w-full px-3 py-2 rounded-lg border border-zinc-300 focus:ring-2 focus:ring-zinc-900 outline-none"
+                    value={newUser.phone}
+                    onChange={e => setNewUser({...newUser, phone: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">역할</label>
+                  <select
+                    id="new-role"
+                    className="w-full px-3 py-2 rounded-lg border border-zinc-300 focus:ring-2 focus:ring-zinc-900 outline-none"
+                    value={newUser.role}
+                    onChange={e => setNewUser({...newUser, role: e.target.value as Role})}
+                  >
+                    <option value="User">User</option>
+                    <option value="Admin">Admin</option>
+                    <option value="Auditor">Auditor</option>
+                  </select>
+                </div>
+                <div className="pt-4">
+                  <button
+                    id="submit-user-button"
+                    type="submit"
+                    className="w-full bg-zinc-900 text-white py-2.5 rounded-lg font-bold hover:bg-zinc-800 transition-all"
+                  >
+                    사용자 생성
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
