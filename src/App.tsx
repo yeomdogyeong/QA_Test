@@ -18,11 +18,15 @@ import { motion, AnimatePresence } from 'motion/react';
 type Role = 'Admin' | 'User' | 'Auditor';
 
 interface UserData {
+  id: number;
   username: string;
+  password?: string;
   role: Role;
   name: string;
-  email?: string;
-  phone?: string;
+  email: string;
+  phone: string;
+  failed_attempts?: number;
+  locked_until?: string | null;
 }
 
 interface LogEntry {
@@ -33,35 +37,77 @@ interface LogEntry {
   ip_address: string;
 }
 
+// Initial Mock Data
+const INITIAL_USERS: UserData[] = [
+  { id: 1, username: 'admin', password: 'Admin123!', role: 'Admin', name: '관리자', email: 'admin@example.com', phone: '010-1234-5678', failed_attempts: 0, locked_until: null },
+  { id: 2, username: 'user1', password: 'User123!', role: 'User', name: '일반사용자', email: 'user1@example.com', phone: '010-9876-5432', failed_attempts: 0, locked_until: null },
+  { id: 3, username: 'audit', password: 'Audit123!', role: 'Auditor', name: '감사자', email: 'audit@example.com', phone: '010-5555-4444', failed_attempts: 0, locked_until: null }
+];
+
 export default function App() {
+  // State initialization from LocalStorage
+  const [users, setUsers] = useState<UserData[]>(() => {
+    const saved = localStorage.getItem('mock_users');
+    return saved ? JSON.parse(saved) : INITIAL_USERS;
+  });
+
+  const [logs, setLogs] = useState<LogEntry[]>(() => {
+    const saved = localStorage.getItem('mock_logs');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [user, setUser] = useState<UserData | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [currentUser, setCurrentUser] = useState<UserData | null>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   
   // Login states
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [loginUsername, setLoginUsername] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
   const [error, setError] = useState('');
   
-  // Data states
-  const [users, setUsers] = useState<UserData[]>([]);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [personalData, setPersonalData] = useState<UserData | null>(null);
+  // Modal states
+  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [newUser, setNewUser] = useState({
+    username: '',
+    password: '',
+    name: '',
+    email: '',
+    phone: '',
+    role: 'User' as Role
+  });
 
   // Session Timeout Logic
   const [lastActivity, setLastActivity] = useState(Date.now());
   const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
+  // Persistence
+  useEffect(() => {
+    localStorage.setItem('mock_users', JSON.stringify(users));
+  }, [users]);
+
+  useEffect(() => {
+    localStorage.setItem('mock_logs', JSON.stringify(logs));
+  }, [logs]);
+
+  const addLog = (username: string, action: string) => {
+    const newLog: LogEntry = {
+      id: Date.now(),
+      timestamp: new Date().toISOString(),
+      username,
+      action,
+      ip_address: '127.0.0.1 (Client-Side Mock)'
+    };
+    setLogs(prev => [newLog, ...prev]);
+  };
+
   const handleLogout = useCallback(() => {
+    if (currentUser) addLog(currentUser.username, '로그아웃');
     setIsLoggedIn(false);
-    setUser(null);
-    setToken(null);
-    localStorage.removeItem('token');
+    setCurrentUser(null);
     setActiveTab('dashboard');
     setError('');
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     if (isLoggedIn) {
@@ -77,118 +123,100 @@ export default function App() {
 
   const updateActivity = () => setLastActivity(Date.now());
 
-  useEffect(() => {
-    if (token) {
-      fetchMe();
-    }
-  }, [token]);
-
-  const fetchMe = async () => {
-    try {
-      const res = await fetch('/api/me', {
-        headers: { 'Authorization': token || '' }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setUser(data);
-        setPersonalData(data);
-        setIsLoggedIn(true);
-      } else {
-        handleLogout();
-      }
-    } catch (e) {
-      handleLogout();
-    }
-  };
-
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
     // Password Policy Check
     const passwordRegex = /^(?=.*[0-9])(?=.*[!@#$%^&*])[a-zA-Z0-9!@#$%^&*]{8,}$/;
-    if (!passwordRegex.test(password)) {
+    if (!passwordRegex.test(loginPassword)) {
       setError('비밀번호는 최소 8자 이상이며, 숫자와 특수문자를 포함해야 합니다.');
       return;
     }
 
-    try {
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setToken(data.token);
-        localStorage.setItem('token', data.token);
-        setUser(data.user);
-        setIsLoggedIn(true);
-        setUsername('');
-        setPassword('');
-      } else {
-        setError(data.error);
+    const userIndex = users.findIndex(u => u.username === loginUsername);
+    const user = users[userIndex];
+
+    if (!user) {
+      addLog(loginUsername || 'unknown', '로그인 실패 (존재하지 않는 사용자)');
+      setError('아이디 또는 비밀번호가 올바르지 않습니다.');
+      return;
+    }
+
+    // Check if locked
+    if (user.locked_until && new Date(user.locked_until) > new Date()) {
+      setError('계정이 잠겼습니다. 나중에 다시 시도하세요.');
+      return;
+    }
+
+    if (user.password !== loginPassword) {
+      const newAttempts = (user.failed_attempts || 0) + 1;
+      let lockedUntil = null;
+      if (newAttempts >= 5) {
+        lockedUntil = new Date(Date.now() + 30 * 60000).toISOString();
       }
-    } catch (e) {
-      setError('서버 연결에 실패했습니다.');
+      
+      const updatedUsers = [...users];
+      updatedUsers[userIndex] = { ...user, failed_attempts: newAttempts, locked_until: lockedUntil };
+      setUsers(updatedUsers);
+      
+      addLog(loginUsername, `로그인 실패 (시도 횟수: ${newAttempts})`);
+      setError('아이디 또는 비밀번호가 올바르지 않습니다.');
+      return;
     }
+
+    // Success
+    const updatedUsers = [...users];
+    updatedUsers[userIndex] = { ...user, failed_attempts: 0, locked_until: null };
+    setUsers(updatedUsers);
+    
+    addLog(loginUsername, '로그인 성공');
+    setCurrentUser(user);
+    setIsLoggedIn(true);
+    setLoginUsername('');
+    setLoginPassword('');
   };
 
-  const fetchUsers = async () => {
-    const res = await fetch('/api/users', {
-      headers: { 'Authorization': token || '' }
-    });
-    if (res.ok) setUsers(await res.json());
-  };
-
-  const fetchLogs = async () => {
-    const res = await fetch('/api/logs', {
-      headers: { 'Authorization': token || '' }
-    });
-    if (res.ok) setLogs(await res.json());
-  };
-
-  useEffect(() => {
-    if (isLoggedIn) {
-      if (activeTab === 'users' && user?.role === 'Admin') fetchUsers();
-      if (activeTab === 'logs' && (user?.role === 'Admin' || user?.role === 'Auditor')) fetchLogs();
-      if (activeTab === 'personal') fetchMe();
-    }
-  }, [activeTab, isLoggedIn, user?.role]);
-
-  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
-  const [newUser, setNewUser] = useState({
-    username: '',
-    password: '',
-    name: '',
-    email: '',
-    phone: '',
-    role: 'User' as Role
-  });
-
-  const handleCreateUser = async (e: React.FormEvent) => {
+  const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      const res = await fetch('/api/users', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': token || ''
-        },
-        body: JSON.stringify(newUser)
-      });
-      const data = await res.json();
-      if (res.ok) {
-        alert('사용자가 생성되었습니다.');
-        setIsUserModalOpen(false);
-        setNewUser({ username: '', password: '', name: '', email: '', phone: '', role: 'User' });
-        fetchUsers();
-      } else {
-        alert(data.error || '생성 실패');
-      }
-    } catch (e) {
-      alert('서버 연결 실패');
+    if (users.some(u => u.username === newUser.username)) {
+      alert('이미 존재하는 아이디입니다.');
+      return;
     }
+
+    const createdUser: UserData = {
+      id: Date.now(),
+      ...newUser,
+      failed_attempts: 0,
+      locked_until: null
+    };
+
+    setUsers(prev => [...prev, createdUser]);
+    addLog(currentUser?.username || 'system', `사용자 생성: ${newUser.username}`);
+    alert('사용자가 생성되었습니다.');
+    setIsUserModalOpen(false);
+    setNewUser({ username: '', password: '', name: '', email: '', phone: '', role: 'User' });
+  };
+
+  const handleDeleteUser = (id: number) => {
+    const target = users.find(u => u.id === id);
+    if (!target) return;
+
+    if (confirm(`${target.username} 사용자를 삭제하시겠습니까?`)) {
+      setUsers(prev => prev.filter(u => u.id !== id));
+      addLog(currentUser?.username || 'system', `사용자 삭제: ${target.username}`);
+      alert('삭제되었습니다.');
+    }
+  };
+
+  // Masking logic
+  const getMaskedPhone = (phone: string) => {
+    if (currentUser?.role === 'Admin') return phone;
+    const parts = phone.split('-');
+    if (parts.length === 3) {
+      return `${parts[0]}-****-${parts[2]}`;
+    }
+    return phone;
   };
 
   if (!isLoggedIn) {
@@ -203,7 +231,7 @@ export default function App() {
             <div className="bg-zinc-900 p-3 rounded-xl mb-4">
               <Shield className="w-8 h-8 text-white" />
             </div>
-            <h1 className="text-2xl font-bold text-zinc-900">보안 관리 시스템</h1>
+            <h1 className="text-2xl font-bold text-zinc-900">보안 관리 시스템 (Mock)</h1>
             <p className="text-zinc-500 text-sm">QA 자동화 테스트 포트폴리오</p>
           </div>
 
@@ -213,8 +241,8 @@ export default function App() {
               <input
                 id="username-input"
                 type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                value={loginUsername}
+                onChange={(e) => setLoginUsername(e.target.value)}
                 className="w-full px-4 py-2 rounded-lg border border-zinc-300 focus:ring-2 focus:ring-zinc-900 focus:border-transparent outline-none transition-all"
                 placeholder="아이디를 입력하세요"
                 required
@@ -225,8 +253,8 @@ export default function App() {
               <input
                 id="password-input"
                 type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
                 className="w-full px-4 py-2 rounded-lg border border-zinc-300 focus:ring-2 focus:ring-zinc-900 focus:border-transparent outline-none transition-all"
                 placeholder="비밀번호를 입력하세요"
                 required
@@ -281,7 +309,7 @@ export default function App() {
             onClick={() => setActiveTab('personal')}
             isOpen={isSidebarOpen}
           />
-          {(user?.role === 'Admin') && (
+          {(currentUser?.role === 'Admin') && (
             <SidebarItem 
               icon={<Users className="w-5 h-5" />} 
               label="사용자 관리" 
@@ -290,7 +318,7 @@ export default function App() {
               isOpen={isSidebarOpen}
             />
           )}
-          {(user?.role === 'Admin' || user?.role === 'Auditor') && (
+          {(currentUser?.role === 'Admin' || currentUser?.role === 'Auditor') && (
             <SidebarItem 
               icon={<FileText className="w-5 h-5" />} 
               label="액세스 로그" 
@@ -321,8 +349,8 @@ export default function App() {
           </button>
           <div className="flex items-center gap-4">
             <div className="text-right">
-              <p className="text-sm font-bold text-zinc-900">{user?.name}</p>
-              <p className="text-xs text-zinc-500">{user?.role}</p>
+              <p className="text-sm font-bold text-zinc-900">{currentUser?.name}</p>
+              <p className="text-xs text-zinc-500">{currentUser?.role}</p>
             </div>
             <div className="w-10 h-10 bg-zinc-100 rounded-full flex items-center justify-center">
               <User className="w-6 h-6 text-zinc-400" />
@@ -336,9 +364,9 @@ export default function App() {
               <motion.div key="dashboard" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
                 <h2 className="text-2xl font-bold mb-6">시스템 현황</h2>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <StatCard title="현재 역할" value={user?.role || ''} icon={<Lock className="w-6 h-6" />} />
-                  <StatCard title="접속 사용자" value={user?.username || ''} icon={<User className="w-6 h-6" />} />
-                  <StatCard title="상태" value="정상" icon={<Shield className="w-6 h-6 text-emerald-500" />} />
+                  <StatCard title="현재 역할" value={currentUser?.role || ''} icon={<Lock className="w-6 h-6" />} />
+                  <StatCard title="접속 사용자" value={currentUser?.username || ''} icon={<User className="w-6 h-6" />} />
+                  <StatCard title="상태" value="정상 (Mock Mode)" icon={<Shield className="w-6 h-6 text-emerald-500" />} />
                 </div>
               </motion.div>
             )}
@@ -348,16 +376,16 @@ export default function App() {
                 <h2 className="text-2xl font-bold mb-6">개인 정보 조회</h2>
                 <div className="bg-white rounded-2xl border border-zinc-200 p-8 max-w-2xl shadow-sm">
                   <div className="space-y-6">
-                    <InfoRow label="이름" value={personalData?.name || '-'} id="personal-name" />
-                    <InfoRow label="이메일" value={personalData?.email || '-'} id="personal-email" />
-                    <InfoRow label="전화번호" value={personalData?.phone || '-'} id="personal-phone" />
-                    <InfoRow label="역할" value={personalData?.role || '-'} id="personal-role" />
+                    <InfoRow label="이름" value={currentUser?.name || '-'} id="personal-name" />
+                    <InfoRow label="이메일" value={currentUser?.email || '-'} id="personal-email" />
+                    <InfoRow label="전화번호" value={getMaskedPhone(currentUser?.phone || '')} id="personal-phone" />
+                    <InfoRow label="역할" value={currentUser?.role || '-'} id="personal-role" />
                   </div>
                 </div>
               </motion.div>
             )}
 
-            {activeTab === 'users' && user?.role === 'Admin' && (
+            {activeTab === 'users' && currentUser?.role === 'Admin' && (
               <motion.div key="users" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
                 <div className="flex justify-between items-center mb-6">
                   <h2 className="text-2xl font-bold">사용자 관리</h2>
@@ -381,7 +409,7 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-100">
-                      {users.map((u: any, idx) => (
+                      {users.map((u, idx) => (
                         <tr key={idx} className="hover:bg-zinc-50 transition-colors">
                           <td className="px-6 py-4 text-sm font-medium">{u.username}</td>
                           <td className="px-6 py-4 text-sm">{u.name}</td>
@@ -396,19 +424,7 @@ export default function App() {
                           <td className="px-6 py-4 text-sm text-zinc-500">{u.email}</td>
                           <td className="px-6 py-4 text-sm">
                             <button 
-                              onClick={() => {
-                                if (confirm(`${u.username} 사용자를 삭제하시겠습니까?`)) {
-                                  fetch(`/api/users/${u.id}`, {
-                                    method: 'DELETE',
-                                    headers: { 'Authorization': token || '' }
-                                  }).then(res => {
-                                    if (res.ok) {
-                                      alert('삭제되었습니다.');
-                                      fetchUsers();
-                                    }
-                                  });
-                                }
-                              }}
+                              onClick={() => handleDeleteUser(u.id)}
                               className="text-red-600 hover:text-red-800 p-1 rounded hover:bg-red-50"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -422,7 +438,7 @@ export default function App() {
               </motion.div>
             )}
 
-            {activeTab === 'logs' && (user?.role === 'Admin' || user?.role === 'Auditor') && (
+            {activeTab === 'logs' && (currentUser?.role === 'Admin' || currentUser?.role === 'Auditor') && (
               <motion.div key="logs" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
                 <h2 className="text-2xl font-bold mb-6">액세스 로그</h2>
                 <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
