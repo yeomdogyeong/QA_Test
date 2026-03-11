@@ -19,16 +19,30 @@
 
 실제 서비스에서 발생할 수 있는 보안 이슈를 기반으로 다음을 수행합니다.
 
-- 보안 중심 테스트 케이스 설계
 - 취약점 검증 테스트
 - Selenium 기반 자동화 테스트
 - QA 포트폴리오 구축
 
 ---
+# 📂 Project Structure
+
+project-root/  
+├─ src/ # 애플리케이션 소스 코드  
+├─ test/ # pytest 기반 테스트 코드  
+│  
+├─ .env.example # 환경 변수 예시 파일  
+├─ .gitignore # git 제외 파일 설정  
+├─ README.md # 프로젝트 설명 문서  
+├─ index.html # 메인 HTML 파일  
+├─ metadata.json # 보안 관리 시스템 메타데이터  
+├─ package.json # npm 의존성 및 스크립트  
+├─ package-lock.json # 패키지 버전 잠금  
+├─ tsconfig.json # TypeScript 설정  
+└─ vite.config.ts # Vite 빌드 설정
+
 
 # 🎯 Project Goals
 
-✔ 보안 QA 테스트 케이스 작성 능력 증명  
 ✔ 웹 보안 취약점 분석 능력 강화  
 ✔ 자동화 테스트 프레임워크 구축  
 ✔ QA 엔지니어 포트폴리오 제작  
