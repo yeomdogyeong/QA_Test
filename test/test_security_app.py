@@ -107,3 +107,9 @@ def test_05_admin_create_and_delete_user_with_log_check(page: Page, app_url: str
     # 삭제 로그 확인
     page.get_by_role("button", name="액세스 로그").click()
     expect(page.locator("#log-table")).to_contain_text("사용자 삭제: tester01")
+
+
+def test_06_fail_test(page: Page, app_url: str):
+    login(page, "admin", "Nopassword", app_url)
+
+    expect(page.get_by_text("시스템 현황")).to_be_visible()

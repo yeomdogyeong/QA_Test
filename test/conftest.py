@@ -3,7 +3,7 @@ import csv
 import pytest
 from playwright.sync_api import Page
 from datetime import datetime
-import csv
+
 
 BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:3000")
 test_result = []
@@ -34,7 +34,9 @@ def login(page: Page, username: str, password: str, app_url: str):
     page.locator("#login-button").click()
 
 
+# pytest 내부 이벤트에 코드 삽입 가능
 @pytest.hookimpl(hookwrapper=True)
+# item = 테스트 정보 / call = 실행 결과 정보
 def pytest_runtest_makereport(item, call):
     outcome = yield
     report = outcome.get_result()
@@ -42,9 +44,22 @@ def pytest_runtest_makereport(item, call):
     # 실제 테스트 본문 실행 결과만 저장
     if report.when == "call":
         error_message = ""
+        screenshot_path = ""
 
         if report.failed and call.excinfo is not None:
             error_message = str(call.excinfo.value)
+            page = item.funcargs.get("page", None)
+
+            if page:
+                os.makedirs("reports/screenshots", exist_ok=True)
+
+                screenshot_path = os.path.join(
+                    "reports",
+                    "screenshots",
+                    f"{item.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
+                )
+
+                page.screenshot(path=screenshot_path)
 
         test_result.append(
             {
@@ -54,6 +69,7 @@ def pytest_runtest_makereport(item, call):
                 "outcome": report.outcome,  # passed / failed / skipped
                 "duration_sec": round(report.duration, 4),
                 "error_message": error_message,
+                "screenshot": "",
             }
         )
 
@@ -72,6 +88,7 @@ def pytest_sessionfinish(session, exitstatus):
                 "outcome",
                 "duration_sec",
                 "error_message",
+                "screenshot",
             ],
         )
         writer.writeheader()
