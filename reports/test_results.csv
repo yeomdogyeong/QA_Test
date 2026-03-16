@@ -1,0 +1,6 @@
+﻿timestamp,test_name,nodeid,outcome,duration_sec,error_message
+2026-03-16 15:24:18,test_01_admin_login_success[chromium],test/test_security_app.py::test_01_admin_login_success[chromium],passed,0.7829,
+2026-03-16 15:24:19,test_02_password_policy_validation[chromium],test/test_security_app.py::test_02_password_policy_validation[chromium],passed,0.6671,
+2026-03-16 15:24:21,test_03_account_lock_after_five_failed_attempts[chromium],test/test_security_app.py::test_03_account_lock_after_five_failed_attempts[chromium],passed,1.2948,
+2026-03-16 15:24:23,test_04_role_based_menu_visibility[chromium],test/test_security_app.py::test_04_role_based_menu_visibility[chromium],passed,1.2901,
+2026-03-16 15:24:27,test_05_admin_create_and_delete_user_with_log_check[chromium],test/test_security_app.py::test_05_admin_create_and_delete_user_with_log_check[chromium],passed,3.745,
